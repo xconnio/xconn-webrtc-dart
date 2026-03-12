@@ -1,0 +1,13 @@
+name: xconn_webrtc
+description: Dart translation of xconn-webrtc-go
+version: 0.0.1
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  flutter_webrtc: ^1.3.1
+  wampproto:
+    # ignore: invalid_dependency
+    git: https://github.com/xconnio/wampproto-dart/
+  xconn:
+    git: https://github.com/xconnio/xconn-dart
