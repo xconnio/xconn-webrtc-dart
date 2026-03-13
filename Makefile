@@ -1,5 +1,5 @@
 install:
-	dart pub get
+	flutter pub get
 
 lint:
 	dart analyze
