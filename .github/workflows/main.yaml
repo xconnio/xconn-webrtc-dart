@@ -14,10 +14,19 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Dart
-        uses: dart-lang/setup-dart@v1
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
         with:
-          sdk: 3.11.1
+          channel: stable
+          flutter-version: 3.38.7
+
+      - name: Cache Pub dependencies
+        uses: actions/cache@v3
+        with:
+          path: ${{ github.workspace }}/.pub-cache
+          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}-v2
+          restore-keys: |
+            ${{ runner.os }}-pub-
 
       - name: Install dependencies
         run: make install
