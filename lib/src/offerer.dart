@@ -5,11 +5,20 @@ import "package:flutter_webrtc/flutter_webrtc.dart";
 import "package:xconn/xconn.dart";
 import "package:xconn_webrtc_dart/xconn_webrtc_dart.dart";
 
+class WebRTCConnectionFailedException implements Exception {
+  WebRTCConnectionFailedException(this.state);
+
+  final RTCPeerConnectionState state;
+
+  @override
+  String toString() {
+    return "WebRTC connection failed before data channel opened: $state";
+  }
+}
+
 class Offerer {
   late RTCPeerConnection? connection;
-  final StreamController<RTCDataChannel> _channelController = StreamController<RTCDataChannel>.broadcast();
-
-  Stream<RTCDataChannel> get channel => _channelController.stream;
+  final Completer<RTCDataChannel> _readyCompleter = Completer<RTCDataChannel>();
 
   Future<Offer> offer(
     OfferConfig offerConfig,
@@ -38,13 +47,30 @@ class Offerer {
     final dc = await peerConnection.createDataChannel("data", options);
 
     dc.onDataChannelState = (state) {
+      print("Data Channel State has changed: $state");
+
       if (state == RTCDataChannelState.RTCDataChannelOpen) {
-        _channelController.add(dc);
+        if (!_readyCompleter.isCompleted) {
+          _readyCompleter.complete(dc);
+        }
+      } else if (state == RTCDataChannelState.RTCDataChannelClosing ||
+          state == RTCDataChannelState.RTCDataChannelClosed) {
+        _failReady(
+          WebRTCConnectionFailedException(
+            peerConnection.connectionState ?? RTCPeerConnectionState.RTCPeerConnectionStateClosed,
+          ),
+        );
       }
     };
 
     peerConnection.onConnectionState = (state) {
       print("Peer Connection State has changed: $state");
+
+      if (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
+          state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected ||
+          state == RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
+        _failReady(WebRTCConnectionFailedException(state));
+      }
     };
 
     final offer = await peerConnection.createOffer();
@@ -66,7 +92,15 @@ class Offerer {
     await connection!.addCandidate(candidate);
   }
 
-  Stream<RTCDataChannel> waitReady() {
-    return channel;
+  Future<RTCDataChannel> waitReady() {
+    return _readyCompleter.future;
+  }
+
+  void _failReady(Object error) {
+    if (_readyCompleter.isCompleted) {
+      return;
+    }
+
+    _readyCompleter.completeError(error);
   }
 }
