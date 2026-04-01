@@ -9,11 +9,7 @@ class Answer {
   factory Answer.fromJson(Map<String, dynamic> json) {
     return Answer(
       candidates: (json["candidates"] as List)
-          .map((c) => RTCIceCandidate(
-                c["candidate"],
-                c["sdpMid"],
-                c["sdpMLineIndex"],
-              ))
+          .map((c) => RTCIceCandidate(c["candidate"], c["sdpMid"], c["sdpMLineIndex"]))
           .toList(),
       description: RTCSessionDescription(
         json["description"]["sdp"],
@@ -34,6 +30,30 @@ class Answer {
 }
 
 typedef Offer = Answer;
+
+class OfferResponse {
+  OfferResponse({
+    required this.requestID,
+    required this.answer,
+  });
+
+  factory OfferResponse.fromJson(Map<String, dynamic> json) {
+    return OfferResponse(
+      requestID: json["requestID"] as String,
+      answer: Answer.fromJson(json["answer"] as Map<String, dynamic>),
+    );
+  }
+
+  final String requestID;
+  final Answer answer;
+
+  Map<String, dynamic> toJson() {
+    return {
+      "requestID": requestID,
+      "answer": answer.toJson(),
+    };
+  }
+}
 
 class OfferConfig {
   OfferConfig({

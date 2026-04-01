@@ -1,7 +1,6 @@
 import "dart:convert";
 
 import "package:flutter_webrtc/flutter_webrtc.dart";
-import "package:uuid/uuid.dart";
 import "package:wampproto/auth.dart";
 import "package:xconn/xconn.dart";
 import "package:xconn_webrtc_dart/src/helpers.dart";
@@ -13,10 +12,11 @@ class ClientConfig {
     required this.procedureWebRTCOffer,
     required this.topicAnswererOnCandidate,
     required this.topicOffererOnCandidate,
+    required this.session,
     this.serializer,
     this.authenticator,
-    this.session,
   });
+
   String realm;
   String procedureWebRTCOffer;
   String topicAnswererOnCandidate;
@@ -24,7 +24,7 @@ class ClientConfig {
 
   Serializer? serializer;
   IClientAuthenticator? authenticator;
-  Session? session;
+  Session session;
 
   void validate() {
     if (realm.isEmpty) {
@@ -43,12 +43,8 @@ class ClientConfig {
       throw Exception("TopicOffererOnCandidate must not be empty");
     }
 
-    serializer ??= JSONSerializer();
+    serializer ??= CBORSerializer();
     authenticator ??= AnonymousAuthenticator("");
-
-    if (session == null) {
-      throw Exception("session must not be nil");
-    }
   }
 }
 
@@ -65,7 +61,7 @@ Future<WebRTCSession> _connectWebRTC(ClientConfig config) async {
     topicAnswererOnCandidate: config.topicAnswererOnCandidate,
   );
 
-  await config.session!.subscribe(config.topicOffererOnCandidate, (Event event) async {
+  await config.session.subscribe(config.topicOffererOnCandidate, (Event event) async {
     if (event.args.length < 2) {
       print("invalid arguments length");
       return;
@@ -88,25 +84,24 @@ Future<WebRTCSession> _connectWebRTC(ClientConfig config) async {
     }
   });
 
-  final requestID = const Uuid().v4();
-
-  final offer = await offerer.offer(
-    offerConfig,
-    config.session!,
-    requestID,
-  );
+  final offer = await offerer.offer(offerConfig);
 
   final offerJSON = jsonEncode(offer);
 
-  final callResponse = await config.session!.call(config.procedureWebRTCOffer, args: [requestID, offerJSON]);
+  final callResponse = await config.session.call(config.procedureWebRTCOffer, args: [offerJSON]);
 
-  final answerText = callResponse.args[0];
+  final offerResponseText = callResponse.args[0] as String;
 
-  final answerMap = jsonDecode(answerText);
+  final offerResponseMap = jsonDecode(offerResponseText) as Map<String, dynamic>;
+  final offerResponse = OfferResponse.fromJson(offerResponseMap);
 
-  final answer = Answer.fromJson(answerMap);
+  if (offerResponse.requestID.isEmpty) {
+    throw Exception("offer response request ID must not be empty");
+  }
 
-  await offerer.handleAnswer(answer);
+  offerer.startICETrickle(config.session, offerConfig.topicAnswererOnCandidate, offerResponse.requestID);
+
+  await offerer.handleAnswer(offerResponse.answer);
 
   final channel = await offerer.waitReady();
 
