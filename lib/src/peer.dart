@@ -5,8 +5,19 @@ import "package:flutter_webrtc/flutter_webrtc.dart";
 import "package:xconn/xconn.dart";
 import "package:xconn_webrtc_dart/xconn_webrtc_dart.dart";
 
+class WebRTCPeerClosedException implements Exception {
+  WebRTCPeerClosedException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 class WebRTCPeer implements Peer {
   WebRTCPeer(this._channel) : _assembler = WebRTCMessageAssembler(mtuSize) {
+    _iterator = StreamIterator<Uint8List>(_messageController.stream);
+
     _channel.onMessage = (RTCDataChannelMessage msg) {
       final data = msg.binary;
 
@@ -22,10 +33,15 @@ class WebRTCPeer implements Peer {
   final WebRTCMessageAssembler _assembler;
 
   final StreamController<Uint8List> _messageController = StreamController<Uint8List>();
+  late final StreamIterator<Uint8List> _iterator;
 
   @override
-  Future<Uint8List> read() {
-    return _messageController.stream.first;
+  Future<Uint8List> read() async {
+    if (await _iterator.moveNext()) {
+      return _iterator.current;
+    }
+
+    throw WebRTCPeerClosedException("WebRTC data channel closed");
   }
 
   @override
@@ -39,6 +55,8 @@ class WebRTCPeer implements Peer {
 
   @override
   Future<void> close() async {
+    await _iterator.cancel();
+    await _messageController.close();
     await _channel.close();
   }
 }

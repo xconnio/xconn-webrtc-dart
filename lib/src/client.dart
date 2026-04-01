@@ -108,7 +108,7 @@ Future<WebRTCSession> _connectWebRTC(ClientConfig config) async {
 
   await offerer.handleAnswer(answer);
 
-  final channel = await offerer.waitReady().first;
+  final channel = await offerer.waitReady();
 
   return WebRTCSession(
     channel: channel,
