@@ -22,20 +22,12 @@ class Offerer {
 
   Future<Offer> offer(
     OfferConfig offerConfig,
-    Session session,
-    String requestID,
   ) async {
     final config = {
       "iceServers": offerConfig.iceServers,
     };
 
     final peerConnection = await createPeerConnection(config);
-
-    peerConnection.onIceCandidate = (candidate) async {
-      final answerData = jsonEncode(candidate.toMap());
-
-      await session.publish(offerConfig.topicAnswererOnCandidate, args: [requestID, answerData]);
-    };
 
     connection = peerConnection;
 
@@ -78,6 +70,14 @@ class Offerer {
     await peerConnection.setLocalDescription(offer);
 
     return Offer(description: offer, candidates: []);
+  }
+
+  void startICETrickle(Session session, String topic, String requestID) {
+    connection!.onIceCandidate = (candidate) async {
+      final answerData = jsonEncode(candidate.toMap());
+
+      await session.publish(topic, args: [requestID, answerData]);
+    };
   }
 
   Future<void> handleAnswer(Answer answer) async {
