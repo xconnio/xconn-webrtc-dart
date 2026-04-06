@@ -19,6 +19,10 @@ class WebRTCConnectionFailedException implements Exception {
 class Offerer {
   late RTCPeerConnection? connection;
   final Completer<RTCDataChannel> _readyCompleter = Completer<RTCDataChannel>();
+  final List<RTCIceCandidate> _pendingCandidates = <RTCIceCandidate>[];
+  Session? _trickleSession;
+  String? _trickleTopic;
+  String? _trickleRequestID;
 
   Future<Offer> offer(
     OfferConfig offerConfig,
@@ -30,6 +34,7 @@ class Offerer {
     final peerConnection = await createPeerConnection(config);
 
     connection = peerConnection;
+    peerConnection.onIceCandidate = _onIceCandidate;
 
     final options = RTCDataChannelInit()
       ..ordered = offerConfig.ordered
@@ -73,11 +78,13 @@ class Offerer {
   }
 
   void startICETrickle(Session session, String topic, String requestID) {
-    connection!.onIceCandidate = (candidate) async {
-      final answerData = jsonEncode(candidate.toMap());
+    _trickleSession = session;
+    _trickleTopic = topic;
+    _trickleRequestID = requestID;
 
-      await session.publish(topic, args: [requestID, answerData]);
-    };
+    final pendingCandidates = List<RTCIceCandidate>.from(_pendingCandidates);
+    _pendingCandidates.clear();
+    pendingCandidates.forEach(_publishCandidate);
   }
 
   Future<void> handleAnswer(Answer answer) async {
@@ -102,5 +109,26 @@ class Offerer {
     }
 
     _readyCompleter.completeError(error);
+  }
+
+  void _onIceCandidate(RTCIceCandidate candidate) {
+    if (_trickleSession == null || _trickleTopic == null || _trickleRequestID == null) {
+      _pendingCandidates.add(candidate);
+      return;
+    }
+
+    _publishCandidate(candidate);
+  }
+
+  void _publishCandidate(RTCIceCandidate candidate) {
+    final session = _trickleSession;
+    final topic = _trickleTopic;
+    final requestID = _trickleRequestID;
+    if (session == null || topic == null || requestID == null) {
+      return;
+    }
+
+    final answerData = jsonEncode(candidate.toMap());
+    unawaited(session.publish(topic, args: [requestID, answerData]));
   }
 }
