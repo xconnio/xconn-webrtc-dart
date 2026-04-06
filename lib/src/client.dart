@@ -13,6 +13,7 @@ class ClientConfig {
     required this.topicAnswererOnCandidate,
     required this.topicOffererOnCandidate,
     required this.session,
+    this.iceServers,
     this.serializer,
     this.authenticator,
   });
@@ -21,6 +22,7 @@ class ClientConfig {
   String procedureWebRTCOffer;
   String topicAnswererOnCandidate;
   String topicOffererOnCandidate;
+  List<Map<String, dynamic>>? iceServers;
 
   Serializer? serializer;
   IClientAuthenticator? authenticator;
@@ -45,6 +47,7 @@ class ClientConfig {
 
     serializer ??= CBORSerializer();
     authenticator ??= AnonymousAuthenticator("");
+    iceServers ??= [];
   }
 }
 
@@ -55,7 +58,7 @@ Future<WebRTCSession> _connectWebRTC(ClientConfig config) async {
 
   final offerConfig = OfferConfig(
     protocol: getSubProtocol(config.serializer!),
-    iceServers: [],
+    iceServers: config.iceServers!,
     ordered: true,
     id: 0,
     topicAnswererOnCandidate: config.topicAnswererOnCandidate,
