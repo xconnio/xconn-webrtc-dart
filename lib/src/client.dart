@@ -1,3 +1,4 @@
+import "dart:async";
 import "dart:convert";
 
 import "package:flutter_webrtc/flutter_webrtc.dart";
@@ -64,6 +65,8 @@ Future<WebRTCSession> _connectWebRTC(ClientConfig config) async {
     topicAnswererOnCandidate: config.topicAnswererOnCandidate,
   );
 
+  // Subscribe and create the offer concurrently.
+  final offerFuture = offerer.offer(offerConfig);
   await config.session.subscribe(config.topicOffererOnCandidate, (Event event) async {
     if (event.args.length < 2) {
       print("invalid arguments length");
@@ -87,7 +90,7 @@ Future<WebRTCSession> _connectWebRTC(ClientConfig config) async {
     }
   });
 
-  final offer = await offerer.offer(offerConfig);
+  final offer = await offerFuture;
 
   final offerJSON = jsonEncode(offer);
 
