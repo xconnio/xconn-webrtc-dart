@@ -20,6 +20,8 @@ class Offerer {
   late RTCPeerConnection? connection;
   final Completer<RTCDataChannel> _readyCompleter = Completer<RTCDataChannel>();
   final List<RTCIceCandidate> _pendingCandidates = <RTCIceCandidate>[];
+  final List<RTCIceCandidate> _pendingRemoteCandidates = <RTCIceCandidate>[];
+  bool _remoteDescriptionSet = false;
   Session? _trickleSession;
   String? _trickleTopic;
   String? _trickleRequestID;
@@ -29,12 +31,12 @@ class Offerer {
   ) async {
     final config = {
       "iceServers": offerConfig.iceServers,
+      "iceCandidatePoolSize": 10,
     };
 
     final peerConnection = await createPeerConnection(config);
 
     connection = peerConnection;
-    peerConnection.onIceCandidate = _onIceCandidate;
 
     final options = RTCDataChannelInit()
       ..ordered = offerConfig.ordered
@@ -70,11 +72,35 @@ class Offerer {
       }
     };
 
-    final offer = await peerConnection.createOffer();
+    // Collect host ICE candidates for up to 100ms and bundle them with the
+    // offer.
+    const trickleAfter = Duration(milliseconds: 100);
+    final deadline = DateTime.now().add(trickleAfter);
+    final List<RTCIceCandidate> initialCandidates = [];
+    final trickleReady = Completer<void>();
 
-    await peerConnection.setLocalDescription(offer);
+    peerConnection.onIceCandidate = (candidate) {
+      if (candidate.candidate == null || candidate.candidate!.isEmpty) return;
 
-    return Offer(description: offer, candidates: []);
+      if (!trickleReady.isCompleted && DateTime.now().isBefore(deadline)) {
+        initialCandidates.add(candidate);
+        if (!candidate.candidate!.contains('typ host')) {
+          trickleReady.complete();
+        }
+      } else {
+        _onIceCandidate(candidate);
+      }
+    };
+
+    final sdpOffer = await peerConnection.createOffer();
+    await peerConnection.setLocalDescription(sdpOffer);
+
+    await Future.any([trickleReady.future, Future.delayed(trickleAfter)]);
+
+    // Switch to normal trickle handler for all candidates from here on.
+    peerConnection.onIceCandidate = _onIceCandidate;
+
+    return Offer(description: sdpOffer, candidates: initialCandidates);
   }
 
   void startICETrickle(Session session, String topic, String requestID) {
@@ -89,13 +115,25 @@ class Offerer {
 
   Future<void> handleAnswer(Answer answer) async {
     await connection!.setRemoteDescription(answer.description);
+    _remoteDescriptionSet = true;
 
     for (final candidate in answer.candidates) {
       await connection!.addCandidate(candidate);
     }
+
+    // Flush remote candidates that arrived via trickle before setRemoteDescription.
+    for (final candidate in _pendingRemoteCandidates) {
+      await connection!.addCandidate(candidate);
+    }
+    _pendingRemoteCandidates.clear();
   }
 
   Future<void> addICECandidate(RTCIceCandidate candidate) async {
+    if (!_remoteDescriptionSet) {
+      _pendingRemoteCandidates.add(candidate);
+      return;
+    }
+
     await connection!.addCandidate(candidate);
   }
 

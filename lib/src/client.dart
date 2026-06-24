@@ -1,3 +1,4 @@
+import "dart:async";
 import "dart:convert";
 
 import "package:flutter_webrtc/flutter_webrtc.dart";
@@ -5,6 +6,8 @@ import "package:wampproto/auth.dart";
 import "package:xconn/xconn.dart";
 import "package:xconn_webrtc_dart/src/helpers.dart";
 import "package:xconn_webrtc_dart/xconn_webrtc_dart.dart";
+
+const _connectTimeout = Duration(seconds: 20);
 
 class ClientConfig {
   ClientConfig({
@@ -55,6 +58,7 @@ Future<WebRTCSession> _connectWebRTC(ClientConfig config) async {
   config.validate();
 
   final offerer = Offerer();
+  String requestID = "";
 
   final offerConfig = OfferConfig(
     protocol: getSubProtocol(config.serializer!),
@@ -64,9 +68,16 @@ Future<WebRTCSession> _connectWebRTC(ClientConfig config) async {
     topicAnswererOnCandidate: config.topicAnswererOnCandidate,
   );
 
+  // Subscribe and create the offer concurrently.
+  final offerFuture = offerer.offer(offerConfig);
   await config.session.subscribe(config.topicOffererOnCandidate, (Event event) async {
     if (event.args.length < 2) {
       print("invalid arguments length");
+      return;
+    }
+
+    final candidateRequestID = event.args[0] as String?;
+    if (candidateRequestID == null || candidateRequestID != requestID) {
       return;
     }
 
@@ -87,7 +98,7 @@ Future<WebRTCSession> _connectWebRTC(ClientConfig config) async {
     }
   });
 
-  final offer = await offerer.offer(offerConfig);
+  final offer = await offerFuture;
 
   final offerJSON = jsonEncode(offer);
 
@@ -102,11 +113,16 @@ Future<WebRTCSession> _connectWebRTC(ClientConfig config) async {
     throw Exception("offer response request ID must not be empty");
   }
 
-  offerer.startICETrickle(config.session, offerConfig.topicAnswererOnCandidate, offerResponse.requestID);
+  requestID = offerResponse.requestID;
+
+  offerer.startICETrickle(config.session, offerConfig.topicAnswererOnCandidate, requestID);
 
   await offerer.handleAnswer(offerResponse.answer);
 
-  final channel = await offerer.waitReady();
+  final channel = await offerer.waitReady().timeout(
+        _connectTimeout,
+        onTimeout: () => throw TimeoutException("WebRTC data channel did not open", _connectTimeout),
+      );
 
   return WebRTCSession(
     channel: channel,
