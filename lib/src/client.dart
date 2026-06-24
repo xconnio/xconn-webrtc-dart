@@ -7,6 +7,8 @@ import "package:xconn/xconn.dart";
 import "package:xconn_webrtc_dart/src/helpers.dart";
 import "package:xconn_webrtc_dart/xconn_webrtc_dart.dart";
 
+const _connectTimeout = Duration(seconds: 20);
+
 class ClientConfig {
   ClientConfig({
     required this.realm,
@@ -117,7 +119,10 @@ Future<WebRTCSession> _connectWebRTC(ClientConfig config) async {
 
   await offerer.handleAnswer(offerResponse.answer);
 
-  final channel = await offerer.waitReady();
+  final channel = await offerer.waitReady().timeout(
+        _connectTimeout,
+        onTimeout: () => throw TimeoutException("WebRTC data channel did not open", _connectTimeout),
+      );
 
   return WebRTCSession(
     channel: channel,
