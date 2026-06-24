@@ -56,6 +56,7 @@ Future<WebRTCSession> _connectWebRTC(ClientConfig config) async {
   config.validate();
 
   final offerer = Offerer();
+  String requestID = "";
 
   final offerConfig = OfferConfig(
     protocol: getSubProtocol(config.serializer!),
@@ -70,6 +71,11 @@ Future<WebRTCSession> _connectWebRTC(ClientConfig config) async {
   await config.session.subscribe(config.topicOffererOnCandidate, (Event event) async {
     if (event.args.length < 2) {
       print("invalid arguments length");
+      return;
+    }
+
+    final candidateRequestID = event.args[0] as String?;
+    if (candidateRequestID == null || candidateRequestID != requestID) {
       return;
     }
 
@@ -105,7 +111,9 @@ Future<WebRTCSession> _connectWebRTC(ClientConfig config) async {
     throw Exception("offer response request ID must not be empty");
   }
 
-  offerer.startICETrickle(config.session, offerConfig.topicAnswererOnCandidate, offerResponse.requestID);
+  requestID = offerResponse.requestID;
+
+  offerer.startICETrickle(config.session, offerConfig.topicAnswererOnCandidate, requestID);
 
   await offerer.handleAnswer(offerResponse.answer);
 
