@@ -8,7 +8,7 @@ class Answer {
 
   factory Answer.fromJson(Map<String, dynamic> json) {
     return Answer(
-      candidates: (json["candidates"] as List)
+      candidates: ((json["candidates"] as List?) ?? const [])
           .map((c) => RTCIceCandidate(c["candidate"], c["sdpMid"], c["sdpMLineIndex"]))
           .toList(),
       description: RTCSessionDescription(
