@@ -29,6 +29,13 @@ class Offerer {
   Future<Offer> offer(
     OfferConfig offerConfig,
   ) async {
+    // Loopback can never reach a remote peer; gathering/checking it just delays ICE gathering completion.
+    await WebRTC.initialize(
+      options: {
+        "networkIgnoreMask": [AdapterType.adapterTypeLoopback.name],
+      },
+    );
+
     final config = {
       "iceServers": offerConfig.iceServers,
       "iceCandidatePoolSize": 10,
