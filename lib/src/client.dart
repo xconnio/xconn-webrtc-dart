@@ -124,6 +124,12 @@ Future<WebRTCSession> _connectWebRTC(ClientConfig config) async {
         onTimeout: () => throw TimeoutException("WebRTC data channel did not open", _connectTimeout),
       );
 
+  // The data channel firing "open" doesn't guarantee the underlying SCTP association is actually ready to deliver the
+  // very first message yet - observed in practice: the initial send() call reports success locally but the remote peer
+  // never receives it, and the connection hangs forever waiting for a reply. A short settle delay avoids sending into
+  // that window.
+  await Future.delayed(const Duration(milliseconds: 200));
+
   return WebRTCSession(
     channel: channel,
     connection: offerer.connection!,
