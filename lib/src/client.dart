@@ -9,6 +9,13 @@ import "package:xconn_webrtc_dart/xconn_webrtc_dart.dart";
 
 const _connectTimeout = Duration(seconds: 20);
 
+class _PendingRemoteCandidate {
+  _PendingRemoteCandidate(this.requestID, this.candidate);
+
+  final String requestID;
+  final RTCIceCandidate candidate;
+}
+
 class ClientConfig {
   ClientConfig({
     required this.realm,
@@ -59,6 +66,7 @@ Future<WebRTCSession> _connectWebRTC(ClientConfig config) async {
 
   final offerer = Offerer();
   String requestID = "";
+  final pendingCandidates = <_PendingRemoteCandidate>[];
 
   final offerConfig = OfferConfig(
     protocol: getSubProtocol(config.serializer!),
@@ -77,7 +85,7 @@ Future<WebRTCSession> _connectWebRTC(ClientConfig config) async {
     }
 
     final candidateRequestID = event.args[0] as String?;
-    if (candidateRequestID == null || candidateRequestID != requestID) {
+    if (candidateRequestID == null) {
       return;
     }
 
@@ -90,6 +98,15 @@ Future<WebRTCSession> _connectWebRTC(ClientConfig config) async {
       candidateMap["sdpMid"],
       candidateMap["sdpMLineIndex"],
     );
+
+    if (requestID.isEmpty) {
+      pendingCandidates.add(_PendingRemoteCandidate(candidateRequestID, candidate));
+      return;
+    }
+
+    if (candidateRequestID != requestID) {
+      return;
+    }
 
     try {
       await offerer.addICECandidate(candidate);
@@ -115,6 +132,19 @@ Future<WebRTCSession> _connectWebRTC(ClientConfig config) async {
 
   requestID = offerResponse.requestID;
 
+  final buffered = List<_PendingRemoteCandidate>.from(pendingCandidates);
+  pendingCandidates.clear();
+  for (final pc in buffered) {
+    if (pc.requestID != requestID) {
+      continue;
+    }
+    try {
+      await offerer.addICECandidate(pc.candidate);
+    } catch (e) {
+      print(e);
+    }
+  }
+
   offerer.startICETrickle(config.session, offerConfig.topicAnswererOnCandidate, requestID);
 
   await offerer.handleAnswer(offerResponse.answer);
@@ -123,12 +153,6 @@ Future<WebRTCSession> _connectWebRTC(ClientConfig config) async {
         _connectTimeout,
         onTimeout: () => throw TimeoutException("WebRTC data channel did not open", _connectTimeout),
       );
-
-  // The data channel firing "open" doesn't guarantee the underlying SCTP association is actually ready to deliver the
-  // very first message yet - observed in practice: the initial send() call reports success locally but the remote peer
-  // never receives it, and the connection hangs forever waiting for a reply. A short settle delay avoids sending into
-  // that window.
-  await Future.delayed(const Duration(milliseconds: 200));
 
   return WebRTCSession(
     channel: channel,
