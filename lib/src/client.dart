@@ -78,7 +78,7 @@ Future<WebRTCSession> _connectWebRTC(ClientConfig config) async {
 
   // Subscribe and create the offer concurrently.
   final offerFuture = offerer.offer(offerConfig);
-  await config.session.subscribe(config.topicOffererOnCandidate, (Event event) async {
+  final subscription = await config.session.subscribe(config.topicOffererOnCandidate, (Event event) async {
     if (event.args.length < 2) {
       print("invalid arguments length");
       return;
@@ -115,49 +115,56 @@ Future<WebRTCSession> _connectWebRTC(ClientConfig config) async {
     }
   });
 
-  final offer = await offerFuture;
+  try {
+    final offer = await offerFuture;
 
-  final offerJSON = jsonEncode(offer);
+    final offerJSON = jsonEncode(offer);
 
-  final callResponse = await config.session.call(config.procedureWebRTCOffer, args: [offerJSON]);
+    final callResponse = await config.session.call(config.procedureWebRTCOffer, args: [offerJSON]);
 
-  final offerResponseText = callResponse.args[0] as String;
+    final offerResponseText = callResponse.args[0] as String;
 
-  final offerResponseMap = jsonDecode(offerResponseText) as Map<String, dynamic>;
-  final offerResponse = OfferResponse.fromJson(offerResponseMap);
+    final offerResponseMap = jsonDecode(offerResponseText) as Map<String, dynamic>;
+    final offerResponse = OfferResponse.fromJson(offerResponseMap);
 
-  if (offerResponse.requestID.isEmpty) {
-    throw Exception("offer response request ID must not be empty");
-  }
-
-  requestID = offerResponse.requestID;
-
-  final buffered = List<_PendingRemoteCandidate>.from(pendingCandidates);
-  pendingCandidates.clear();
-  for (final pc in buffered) {
-    if (pc.requestID != requestID) {
-      continue;
+    if (offerResponse.requestID.isEmpty) {
+      throw Exception("offer response request ID must not be empty");
     }
-    try {
-      await offerer.addICECandidate(pc.candidate);
-    } catch (e) {
-      print(e);
+
+    requestID = offerResponse.requestID;
+
+    final buffered = List<_PendingRemoteCandidate>.from(pendingCandidates);
+    pendingCandidates.clear();
+    for (final pc in buffered) {
+      if (pc.requestID != requestID) {
+        continue;
+      }
+      try {
+        await offerer.addICECandidate(pc.candidate);
+      } catch (e) {
+        print(e);
+      }
     }
+
+    offerer.startICETrickle(config.session, offerConfig.topicAnswererOnCandidate, requestID);
+
+    await offerer.handleAnswer(offerResponse.answer);
+
+    final channel = await offerer.waitReady().timeout(
+          _connectTimeout,
+          onTimeout: () => throw TimeoutException("WebRTC data channel did not open", _connectTimeout),
+        );
+
+    return WebRTCSession(
+      channel: channel,
+      connection: offerer.connection!,
+    );
+  } catch (e) {
+    await offerer.connection?.close();
+    rethrow;
+  } finally {
+    unawaited(subscription.unsubscribe());
   }
-
-  offerer.startICETrickle(config.session, offerConfig.topicAnswererOnCandidate, requestID);
-
-  await offerer.handleAnswer(offerResponse.answer);
-
-  final channel = await offerer.waitReady().timeout(
-        _connectTimeout,
-        onTimeout: () => throw TimeoutException("WebRTC data channel did not open", _connectTimeout),
-      );
-
-  return WebRTCSession(
-    channel: channel,
-    connection: offerer.connection!,
-  );
 }
 
 Future<WebRTCSession> connectWebRTC(ClientConfig config) async {
