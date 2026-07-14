@@ -17,7 +17,7 @@ class WebRTCConnectionFailedException implements Exception {
 }
 
 class Offerer {
-  late RTCPeerConnection? connection;
+  RTCPeerConnection? connection;
   final Completer<RTCDataChannel> _readyCompleter = Completer<RTCDataChannel>();
   final List<RTCIceCandidate> _pendingCandidates = <RTCIceCandidate>[];
   final List<RTCIceCandidate> _pendingRemoteCandidates = <RTCIceCandidate>[];
