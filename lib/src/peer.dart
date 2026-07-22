@@ -27,6 +27,12 @@ class WebRTCPeer implements Peer {
         _messageController.add(toSend);
       }
     };
+
+    _channel.onDataChannelState = (state) {
+      if (state == RTCDataChannelState.RTCDataChannelClosing || state == RTCDataChannelState.RTCDataChannelClosed) {
+        _handleChannelClosed();
+      }
+    };
   }
 
   final RTCDataChannel _channel;
@@ -34,6 +40,17 @@ class WebRTCPeer implements Peer {
 
   final StreamController<Uint8List> _messageController = StreamController<Uint8List>();
   late final StreamIterator<Uint8List> _iterator;
+  bool _closed = false;
+
+  void _handleChannelClosed() {
+    if (_closed) {
+      return;
+    }
+    _closed = true;
+    if (!_messageController.isClosed) {
+      unawaited(_messageController.close());
+    }
+  }
 
   @override
   Future<Uint8List> read() async {
@@ -55,8 +72,8 @@ class WebRTCPeer implements Peer {
 
   @override
   Future<void> close() async {
+    _handleChannelClosed();
     await _iterator.cancel();
-    await _messageController.close();
     await _channel.close();
   }
 }

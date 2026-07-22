@@ -25,6 +25,7 @@ class Offerer {
   Session? _trickleSession;
   String? _trickleTopic;
   String? _trickleRequestID;
+  bool _channelClosed = false;
 
   Future<Offer> offer(
     OfferConfig offerConfig,
@@ -76,6 +77,7 @@ class Offerer {
           state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected ||
           state == RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
         _failReady(WebRTCConnectionFailedException(state));
+        _closeChannel(dc);
       }
     };
 
@@ -154,6 +156,14 @@ class Offerer {
     }
 
     _readyCompleter.completeError(error);
+  }
+
+  void _closeChannel(RTCDataChannel dc) {
+    if (_channelClosed) {
+      return;
+    }
+    _channelClosed = true;
+    unawaited(dc.close());
   }
 
   void _onIceCandidate(RTCIceCandidate candidate) {
