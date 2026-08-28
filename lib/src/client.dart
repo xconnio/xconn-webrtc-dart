@@ -26,6 +26,7 @@ class ClientConfig {
     this.iceServers,
     this.serializer,
     this.authenticator,
+    this.onDisconnect,
   });
 
   String realm;
@@ -37,6 +38,9 @@ class ClientConfig {
   Serializer? serializer;
   IClientAuthenticator? authenticator;
   Session session;
+
+  // Called when the WebRTC connection is lost.
+  void Function()? onDisconnect;
 
   void validate() {
     if (realm.isEmpty) {
@@ -64,7 +68,7 @@ class ClientConfig {
 Future<WebRTCSession> _connectWebRTC(ClientConfig config) async {
   config.validate();
 
-  final offerer = Offerer();
+  final offerer = Offerer()..onDisconnect = config.onDisconnect;
   String requestID = "";
   final pendingCandidates = <_PendingRemoteCandidate>[];
 
