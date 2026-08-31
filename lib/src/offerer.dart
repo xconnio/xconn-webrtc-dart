@@ -18,6 +18,9 @@ class WebRTCConnectionFailedException implements Exception {
 
 class Offerer {
   RTCPeerConnection? connection;
+
+  void Function()? onDisconnect;
+
   final Completer<RTCDataChannel> _readyCompleter = Completer<RTCDataChannel>();
   final List<RTCIceCandidate> _pendingCandidates = <RTCIceCandidate>[];
   final List<RTCIceCandidate> _pendingRemoteCandidates = <RTCIceCandidate>[];
@@ -26,6 +29,8 @@ class Offerer {
   String? _trickleTopic;
   String? _trickleRequestID;
   bool _channelClosed = false;
+  bool _connected = false;
+  bool _disconnectFired = false;
 
   Future<Offer> offer(
     OfferConfig offerConfig,
@@ -57,6 +62,7 @@ class Offerer {
       print("Data Channel State has changed: $state");
 
       if (state == RTCDataChannelState.RTCDataChannelOpen) {
+        _connected = true;
         if (!_readyCompleter.isCompleted) {
           _readyCompleter.complete(dc);
         }
@@ -78,6 +84,11 @@ class Offerer {
           state == RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
         _failReady(WebRTCConnectionFailedException(state));
         _closeChannel(dc);
+
+        if (_connected && !_disconnectFired) {
+          _disconnectFired = true;
+          onDisconnect?.call();
+        }
       }
     };
 
