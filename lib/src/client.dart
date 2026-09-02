@@ -162,6 +162,8 @@ Future<WebRTCSession> _connectWebRTC(ClientConfig config) async {
     return WebRTCSession(
       channel: channel,
       connection: offerer.connection!,
+      incomingChannels: offerer.incomingChannels,
+      extraChannel: offerer.extraChannel,
     );
   } catch (e) {
     await offerer.connection?.close();
@@ -178,10 +180,7 @@ Future<WebRTCSession> connectWebRTC(ClientConfig config) async {
 
   await joinPeer(peer, config.realm, config.serializer!, config.authenticator!);
 
-  return WebRTCSession(
-    channel: webRTCSession.channel,
-    connection: webRTCSession.connection,
-  );
+  return webRTCSession;
 }
 
 Future<Session> connectWAMP(ClientConfig config) async {

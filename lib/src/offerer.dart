@@ -32,6 +32,26 @@ class Offerer {
   bool _connected = false;
   bool _disconnectFired = false;
 
+  final StreamController<RTCDataChannel> _incomingChannelsController = StreamController<RTCDataChannel>();
+
+  // Raw (non-WAMP) data channels the remote peer opens on this connection,
+  // e.g. deskconnd's "file-stream" channel: it opens this itself rather than
+  // waiting for the client to, since some clients (observed on Android)
+  // can't reliably create additional data channels once already connected.
+  Stream<RTCDataChannel> get incomingChannels => _incomingChannelsController.stream;
+
+  final Map<String, Completer<RTCDataChannel>> _extraChannelCompleters = {};
+
+  // Raw (non-WAMP) data channels created up front, alongside the main "data"
+  // channel, before the initial offer — so they're part of the same DCEP
+  // handshake instead of being opened after the connection is already
+  // established (unreliable on some clients, observed on Android). Populated
+  // for every label in OfferConfig.additionalChannels; resolves once each
+  // channel actually reaches the open state.
+  Future<RTCDataChannel> extraChannel(String label) {
+    return _extraChannelCompleters.putIfAbsent(label, Completer<RTCDataChannel>.new).future;
+  }
+
   Future<Offer> offer(
     OfferConfig offerConfig,
   ) async {
@@ -50,6 +70,12 @@ class Offerer {
     final peerConnection = await createPeerConnection(config);
 
     connection = peerConnection;
+
+    peerConnection.onDataChannel = (channel) {
+      if (!_incomingChannelsController.isClosed) {
+        _incomingChannelsController.add(channel);
+      }
+    };
 
     final options = RTCDataChannelInit()
       ..ordered = offerConfig.ordered
@@ -84,6 +110,12 @@ class Offerer {
           state == RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
         _failReady(WebRTCConnectionFailedException(state));
         _closeChannel(dc);
+        unawaited(_incomingChannelsController.close());
+        for (final completer in _extraChannelCompleters.values) {
+          if (!completer.isCompleted) {
+            completer.completeError(WebRTCConnectionFailedException(state));
+          }
+        }
 
         if (_connected && !_disconnectFired) {
           _disconnectFired = true;
@@ -91,6 +123,24 @@ class Offerer {
         }
       }
     };
+
+    for (final label in offerConfig.additionalChannels) {
+      final extraOptions = RTCDataChannelInit()..ordered = true;
+      final extraChannel = await peerConnection.createDataChannel(label, extraOptions);
+      final completer = _extraChannelCompleters.putIfAbsent(label, Completer<RTCDataChannel>.new);
+      extraChannel.onDataChannelState = (state) {
+        if (state == RTCDataChannelState.RTCDataChannelOpen) {
+          if (!completer.isCompleted) {
+            completer.complete(extraChannel);
+          }
+        } else if (state == RTCDataChannelState.RTCDataChannelClosing ||
+            state == RTCDataChannelState.RTCDataChannelClosed) {
+          if (!completer.isCompleted) {
+            completer.completeError(WebRTCPeerClosedException("extra data channel '$label' closed before opening"));
+          }
+        }
+      };
+    }
 
     // Collect host ICE candidates for up to 100ms and bundle them with the
     // offer.
