@@ -63,6 +63,7 @@ class OfferConfig {
     required this.id,
     required this.topicAnswererOnCandidate,
     this.additionalChannels = const [],
+    this.channelOptions = const {},
   });
 
   final String protocol;
@@ -76,6 +77,8 @@ class OfferConfig {
   // handshake instead of being opened later (unreliable on some clients,
   // observed on Android). See Offerer.extraChannel.
   final List<String> additionalChannels;
+
+  final Map<String, RTCDataChannelInit> channelOptions;
 }
 
 class WebRTCSession {

@@ -125,7 +125,7 @@ class Offerer {
     };
 
     for (final label in offerConfig.additionalChannels) {
-      final extraOptions = RTCDataChannelInit()..ordered = true;
+      final extraOptions = offerConfig.channelOptions[label] ?? (RTCDataChannelInit()..ordered = true);
       final extraChannel = await peerConnection.createDataChannel(label, extraOptions);
       final completer = _extraChannelCompleters.putIfAbsent(label, Completer<RTCDataChannel>.new);
       extraChannel.onDataChannelState = (state) {
