@@ -64,7 +64,6 @@ class Offerer {
 
     final config = {
       "iceServers": offerConfig.iceServers,
-      "iceCandidatePoolSize": 10,
     };
 
     final peerConnection = await createPeerConnection(config);
